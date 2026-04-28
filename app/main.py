@@ -51,15 +51,14 @@ def _get_language_client():
         #   4. Read AZURE_AI_LANGUAGE_KEY from environment
         #   5. Create the client with endpoint and credential
         #
-        #   from azure.ai.textanalytics import TextAnalyticsClient
-        #   from azure.core.credentials import AzureKeyCredential
-        #   _language_client = TextAnalyticsClient(
-        #       endpoint=os.environ["AZURE_AI_LANGUAGE_ENDPOINT"],
-        #       credential=AzureKeyCredential(
-        #           os.environ["AZURE_AI_LANGUAGE_KEY"]
-        #       ),
-        #   )
-        raise NotImplementedError("Configure the AI Language client")
+           from azure.ai.textanalytics import TextAnalyticsClient
+           from azure.core.credentials import AzureKeyCredential
+           _language_client = TextAnalyticsClient(
+               endpoint=os.environ["AZURE_AI_LANGUAGE_ENDPOINT"],
+               credential=AzureKeyCredential(
+                   os.environ["AZURE_AI_LANGUAGE_KEY"]
+               ),
+           )
     return _language_client
 
 
@@ -74,15 +73,15 @@ def _get_translator_client():
         #   4. Read AZURE_TRANSLATOR_REGION from environment (default: "eastus")
         #   5. Create the client with credential and region
         #
-        #   from azure.ai.translation.text import TextTranslationClient
-        #   from azure.core.credentials import AzureKeyCredential
-        #   _translator_client = TextTranslationClient(
-        #       credential=AzureKeyCredential(
-        #           os.environ["AZURE_TRANSLATOR_KEY"]
-        #       ),
-        #       region=os.environ.get("AZURE_TRANSLATOR_REGION", "eastus"),
-        #   )
-        raise NotImplementedError("Configure the Translator client")
+        from azure.ai.translation.text import TextTranslationClient
+        from azure.core.credentials import AzureKeyCredential
+        _translator_client = TextTranslationClient(
+               credential=AzureKeyCredential(
+                   os.environ["AZURE_TRANSLATOR_KEY"]
+               ),
+               region=os.environ.get("AZURE_TRANSLATOR_REGION", "eastus"),
+           )
+    return _translator_client
     return _translator_client
 
 
@@ -98,17 +97,17 @@ def _get_clu_client():
         #   4. Read AZURE_AI_LANGUAGE_KEY from environment
         #   5. Create the client with endpoint and credential
         #
-        #   from azure.ai.language.conversations import (
-        #       ConversationAnalysisClient,
-        #   )
-        #   from azure.core.credentials import AzureKeyCredential
-        #   _clu_client = ConversationAnalysisClient(
-        #       endpoint=os.environ["AZURE_AI_LANGUAGE_ENDPOINT"],
-        #       credential=AzureKeyCredential(
-        #           os.environ["AZURE_AI_LANGUAGE_KEY"]
-        #       ),
-        #   )
-        raise NotImplementedError("Configure the CLU client")
+        from azure.ai.language.conversations import (
+               ConversationAnalysisClient,
+           )
+        from azure.core.credentials import AzureKeyCredential
+        _clu_client = ConversationAnalysisClient(
+               endpoint=os.environ["AZURE_AI_LANGUAGE_ENDPOINT"],
+               credential=AzureKeyCredential(
+                   os.environ["AZURE_AI_LANGUAGE_KEY"]
+               ),
+           )
+    return _clu_client
     return _clu_client
 
 
@@ -212,8 +211,31 @@ def detect_and_redact_pii(text: str) -> dict:
     #   Example: {"text": "John Smith", "category": "Person",
     #             "confidence_score": 0.98}
     # TODO: Step 1.5 - Return dict with original_text, redacted_text, entities
-    raise NotImplementedError("Implement detect_and_redact_pii in Step 1")
+    # Step 1.1 - Get the Language client
+    client = _get_language_client()
 
+    # Step 1.2 - Call recognize_pii_entities with the text as a single-doc list
+    response = client.recognize_pii_entities([text])
+
+    # Step 1.3 - Extract redacted_text from the first result doc
+    doc = response[0]
+
+    # Step 1.4 - Build the entities list from doc.entities
+    entities = [
+        {
+            "text": entity.text,
+            "category": entity.category,
+            "confidence_score": entity.confidence_score,
+        }
+        for entity in doc.entities
+    ]
+
+    # Step 1.5 - Return the required dict
+    return {
+        "original_text": text,
+        "redacted_text": doc.redacted_text,
+        "entities": entities,
+    }
 
 # ---------------------------------------------------------------------------
 # TODO: Step 2 - Sentiment Analysis and Key Phrase Extraction
@@ -239,9 +261,30 @@ def analyze_sentiment_and_phrases(text: str) -> dict:
     #   {"positive": 0.01, "negative": 0.95, "neutral": 0.04}
     # TODO: Step 2.5 - Return dict with sentiment, confidence_scores,
     #   key_phrases
-    raise NotImplementedError(
-        "Implement analyze_sentiment_and_phrases in Step 2"
-    )
+    # Step 2.1 - Get the Language client
+    client = _get_language_client()
+
+    # Step 2.2 - Call analyze_sentiment with the text as a single-doc list
+    response = client.analyze_sentiment([text])
+    doc = response[0]
+
+    # Step 2.3 - Call extract_key_phrases with the text as a single-doc list
+    phrases_response = client.extract_key_phrases([text])
+    phrases_doc = phrases_response[0]
+
+    # Step 2.4 - Build the confidence_scores dict from doc
+    confidence_scores = {
+        "positive": doc.confidence_scores.positive,
+        "negative": doc.confidence_scores.negative,
+        "neutral":  doc.confidence_scores.neutral,
+    }
+
+    # Step 2.5 - Return the required dict
+    return {
+        "sentiment":         doc.sentiment,
+        "confidence_scores": confidence_scores,
+        "key_phrases":       list(phrases_doc.key_phrases),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -271,7 +314,39 @@ def detect_and_translate(text: str) -> dict:
     # TODO: Step 3.5 - Return dict with detected_language, confidence,
     #   original_text, translated_text, was_translated
     #   If already English: translated_text = original_text, was_translated = False
-    raise NotImplementedError("Implement detect_and_translate in Step 3")
+    # Step 3.1 - Get the Language client
+    client = _get_language_client()
+
+    # Step 3.2 - Detect the language of the input text
+    response = client.detect_language([text])
+    doc = response[0]
+    detected_language = doc.primary_language.iso6391_name
+    confidence = doc.primary_language.confidence_score
+
+    # Step 3.3 - If not English, get the Translator client and translate
+    if detected_language != "en":
+        translator = _get_translator_client()
+
+        # Step 3.4 - Translate the text to English
+        translation_response = translator.translate(
+            body=[text],
+            to_language=["en"],
+        )
+        translated_text = translation_response[0].translations[0].text
+        was_translated = True
+    else:
+        # Already English — no translation needed
+        translated_text = text
+        was_translated = False
+
+    # Step 3.5 - Return the required dict
+    return {
+        "detected_language": detected_language,
+        "confidence":        confidence,
+        "original_text":     text,
+        "translated_text":   translated_text,
+        "was_translated":    was_translated,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -300,22 +375,23 @@ def recognize_intent(text: str) -> dict:
 
     try:
         # TODO: Step 4.1 - Get the CLU client using _get_clu_client()
+        client = _get_clu_client()
         # TODO: Step 4.2 - Build the analysis input dict:
-        #   {
-        #       "kind": "Conversation",
-        #       "analysisInput": {
-        #           "conversationItem": {
-        #               "id": "1",
-        #               "text": text,
-        #               "participantId": "user",
-        #           }
-        #       },
-        #       "parameters": {
-        #           "projectName": clu_project,
-        #           "deploymentName": clu_deployment,
-        #           "stringIndexType": "TextElement_V8",
-        #       },
-        #   }
+        task = {
+            "kind": "Conversation",
+            "analysisInput": {
+                "conversationItem": {
+                    "id": "1",
+                    "text": text,
+                    "participantId": "user",
+                }
+            },
+            "parameters": {
+                "projectName": clu_project,
+                "deploymentName": clu_deployment,
+                "stringIndexType": "TextElement_V8",
+            },
+        }
         # TODO: Step 4.3 - Call client.analyze_conversation(task)
         #   The response contains .result.prediction with:
         #     .top_intent (str), .intents (list with .category and
@@ -328,7 +404,36 @@ def recognize_intent(text: str) -> dict:
         #     top_intent = _CLU_INTENT_MAP.get(raw_intent, raw_intent)
         # TODO: Step 4.5 - Extract confidence and entities, return dict
         #   Return dict with top_intent (mapped), confidence, entities
-        raise NotImplementedError("Implement recognize_intent in Step 4")
+        # Step 4.3 - Call analyze_conversation with the task
+        response = client.analyze_conversation(task)
+        prediction = response.result.prediction
+
+        # Step 4.4 - Map PascalCase CLU intent to kebab-case pipeline format
+        raw_intent = prediction.top_intent
+        top_intent = _CLU_INTENT_MAP.get(raw_intent, raw_intent)
+
+        # Step 4.5 - Extract confidence and entities, return dict
+        confidence = next(
+            (i.confidence_score for i in prediction.intents
+             if i.category == raw_intent),
+            0.0,
+        )
+
+        entities = [
+            {
+                "entity": entity.text,
+                "category": entity.category,
+                "text": entity.text,
+            }
+            for entity in prediction.entities
+        ]
+
+        return {
+            "top_intent": top_intent,
+            "confidence": confidence,
+            "entities":   entities,
+        }
+
     except NotImplementedError:
         raise
     except Exception:
